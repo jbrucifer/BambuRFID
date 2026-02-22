@@ -99,9 +99,17 @@ class MainActivity : AppCompatActivity() {
         val pendingIntent = PendingIntent.getActivity(
             this, 0, intent, PendingIntent.FLAG_MUTABLE
         )
-        val techFilter = IntentFilter(NfcAdapter.ACTION_TECH_DISCOVERED)
-        val techList = arrayOf(arrayOf(MifareClassic::class.java.name))
-        nfcAdapter?.enableForegroundDispatch(this, pendingIntent, arrayOf(techFilter), techList)
+        // Catch all NFC intents — TAG_DISCOVERED is the broadest catch-all,
+        // TECH_DISCOVERED is for MIFARE Classic specifically.
+        // Using both ensures BambuNFC always gets priority over TagMo.
+        val filters = arrayOf(
+            IntentFilter(NfcAdapter.ACTION_TAG_DISCOVERED),
+            IntentFilter(NfcAdapter.ACTION_TECH_DISCOVERED)
+        )
+        val techList = arrayOf(
+            arrayOf(MifareClassic::class.java.name)
+        )
+        nfcAdapter?.enableForegroundDispatch(this, pendingIntent, filters, techList)
     }
 
     // ──────────────────────────────────────────
