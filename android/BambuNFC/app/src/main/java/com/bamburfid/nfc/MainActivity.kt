@@ -7,22 +7,24 @@ import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.MifareClassic
 import android.os.Bundle
-import android.util.Base64
 import android.util.Log
-import android.widget.Button
-import android.widget.EditText
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import org.json.JSONArray
-import org.json.JSONObject
-import java.net.URI
-import okhttp3.*
+import androidx.navigation.fragment.NavHostFragment
+import androidx.navigation.ui.setupWithNavController
+import com.bamburfid.nfc.databinding.ActivityMainBinding
+import com.bamburfid.nfc.nfc.NfcManager
+import com.bamburfid.nfc.ui.scan.ScanFragment
+import com.bamburfid.nfc.ui.write.WriteFragment
+import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
- * BambuNFC — Android companion app for BambuRFID.
+ * BambuNFC — Enhanced companion app for BambuRFID.
  *
- * Acts as a MIFARE Classic NFC bridge between the phone's NFC hardware
- * and the BambuRFID web backend via WebSocket.
+ * Single Activity with bottom navigation hosting 5 fragments.
+ * NFC foreground dispatch is handled here and routed to the active fragment.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -30,47 +32,27 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "BambuNFC"
     }
 
+    private lateinit var binding: ActivityMainBinding
     private var nfcAdapter: NfcAdapter? = null
-    private var wsClient: OkHttpClient? = null
-    private var webSocket: WebSocket? = null
-    private var connected = false
-
-    // Current operation mode
-    private var pendingAction: String? = null  // "READ_TAG" or "WRITE_TAG"
-    private var pendingRequestId: String? = null
-    private var pendingKeys: List<ByteArray>? = null
-    private var pendingBlocks: List<ByteArray>? = null
-    private var pendingTargetUid: ByteArray? = null
-
-    // UI elements
-    private lateinit var statusText: TextView
-    private lateinit var logText: TextView
-    private lateinit var serverInput: EditText
-    private lateinit var connectButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-        statusText = findViewById(R.id.statusText)
-        logText = findViewById(R.id.logText)
-        serverInput = findViewById(R.id.serverInput)
-        connectButton = findViewById(R.id.connectButton)
+        // Set up navigation
+        val navHostFragment = supportFragmentManager
+            .findFragmentById(R.id.nav_host_fragment) as NavHostFragment
+        val navController = navHostFragment.navController
+        binding.bottomNav.setupWithNavController(navController)
 
+        // Initialize NFC
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         if (nfcAdapter == null) {
-            statusText.text = "NFC not available on this device"
-            return
+            Snackbar.make(binding.root, R.string.nfc_not_available, Snackbar.LENGTH_LONG).show()
+        } else if (!nfcAdapter!!.isEnabled) {
+            Snackbar.make(binding.root, R.string.nfc_not_enabled, Snackbar.LENGTH_LONG).show()
         }
-
-        connectButton.setOnClickListener {
-            val url = serverInput.text.toString().trim()
-            if (url.isNotEmpty()) {
-                connectWebSocket(url)
-            }
-        }
-
-        log("BambuNFC ready. Enter server URL and tap Connect.")
     }
 
     override fun onResume() {
@@ -85,11 +67,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+
         if (NfcAdapter.ACTION_TECH_DISCOVERED == intent.action ||
             NfcAdapter.ACTION_TAG_DISCOVERED == intent.action) {
+
+            @Suppress("DEPRECATION")
             val tag = intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)
             if (tag != null) {
-                handleTag(tag)
+                routeTagToFragment(tag)
             }
         }
     }
@@ -99,9 +84,6 @@ class MainActivity : AppCompatActivity() {
         val pendingIntent = PendingIntent.getActivity(
             this, 0, intent, PendingIntent.FLAG_MUTABLE
         )
-        // Catch all NFC intents — TAG_DISCOVERED is the broadest catch-all,
-        // TECH_DISCOVERED is for MIFARE Classic specifically.
-        // Using both ensures BambuNFC always gets priority over TagMo.
         val filters = arrayOf(
             IntentFilter(NfcAdapter.ACTION_TAG_DISCOVERED),
             IntentFilter(NfcAdapter.ACTION_TECH_DISCOVERED)
@@ -112,306 +94,59 @@ class MainActivity : AppCompatActivity() {
         nfcAdapter?.enableForegroundDispatch(this, pendingIntent, filters, techList)
     }
 
-    // ──────────────────────────────────────────
-    // NFC Tag Handling
-    // ──────────────────────────────────────────
+    /**
+     * Route a discovered NFC tag to the currently visible fragment.
+     * - ScanFragment: read and display the tag data
+     * - WriteFragment: write pending data to the tag
+     * - Any other screen: auto-read and show a snackbar summary
+     */
+    private fun routeTagToFragment(tag: Tag) {
+        val navHostFragment = supportFragmentManager
+            .findFragmentById(R.id.nav_host_fragment) as? NavHostFragment
+        val currentFragment = navHostFragment?.childFragmentManager?.fragments?.firstOrNull()
 
-    private fun handleTag(tag: Tag) {
-        val mifare = MifareClassic.get(tag)
-        if (mifare == null) {
-            log("Not a MIFARE Classic tag")
-            return
-        }
-
-        val uid = tag.id
-        val uidHex = uid.joinToString("") { "%02X".format(it) }
-        log("Tag detected: UID=$uidHex")
-
-        // Notify backend of tag detection
-        sendMessage(JSONObject().apply {
-            put("action", "TAG_DETECTED")
-            put("uid", uidHex)
-        })
-
-        when (pendingAction) {
-            "READ_TAG" -> readTag(mifare, uid, uidHex)
-            "WRITE_TAG" -> writeTag(mifare, uid, uidHex)
+        when (currentFragment) {
+            is ScanFragment -> {
+                Log.d(TAG, "Routing tag to ScanFragment")
+                currentFragment.onTagDiscovered(tag)
+            }
+            is WriteFragment -> {
+                Log.d(TAG, "Routing tag to WriteFragment")
+                currentFragment.onTagDiscovered(tag)
+            }
             else -> {
-                // Auto-read if no specific action is pending
-                log("No pending action. Auto-reading tag...")
-                readTag(mifare, uid, uidHex)
+                // Auto-read from any screen and show snackbar
+                Log.d(TAG, "Auto-reading tag from ${currentFragment?.javaClass?.simpleName}")
+                autoReadTag(tag)
             }
         }
     }
 
-    private fun readTag(mifare: MifareClassic, uid: ByteArray, uidHex: String) {
-        Thread {
-            try {
-                mifare.connect()
-                log("Reading ${mifare.blockCount} blocks...")
-
-                val blocks = JSONArray()
-                val keys = pendingKeys
-
-                for (sector in 0 until mifare.sectorCount) {
-                    // Try to authenticate with derived key, then default keys
-                    val authenticated = if (keys != null && sector < keys.size) {
-                        mifare.authenticateSectorWithKeyA(sector, keys[sector]) ||
-                        mifare.authenticateSectorWithKeyB(sector, keys[sector])
-                    } else {
-                        mifare.authenticateSectorWithKeyA(sector, MifareClassic.KEY_DEFAULT) ||
-                        mifare.authenticateSectorWithKeyA(sector, MifareClassic.KEY_MIFARE_APPLICATION_DIRECTORY) ||
-                        mifare.authenticateSectorWithKeyA(sector, MifareClassic.KEY_NFC_FORUM)
-                    }
-
-                    if (authenticated) {
-                        val firstBlock = mifare.sectorToBlock(sector)
-                        val blockCount = mifare.getBlockCountInSector(sector)
-                        for (i in 0 until blockCount) {
-                            val blockData = mifare.readBlock(firstBlock + i)
-                            blocks.put(Base64.encodeToString(blockData, Base64.NO_WRAP))
-                        }
-                    } else {
-                        log("Auth failed for sector $sector, using zeros")
-                        val blockCount = mifare.getBlockCountInSector(sector)
-                        for (i in 0 until blockCount) {
-                            blocks.put(Base64.encodeToString(ByteArray(16), Base64.NO_WRAP))
-                        }
+    /**
+     * Quick auto-read when tag is tapped from a non-Scan screen.
+     * Shows a snackbar with the material name and navigates to Scan tab.
+     */
+    private fun autoReadTag(tag: Tag) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val result = NfcManager.readTag(tag)
+            when (result) {
+                is NfcManager.NfcResult.Success -> {
+                    val data = result.result.filamentData
+                    runOnUiThread {
+                        Snackbar.make(
+                            binding.root,
+                            "Tag: ${data.displayName} (${data.colorHex})",
+                            Snackbar.LENGTH_LONG
+                        ).setAction("View") {
+                            binding.bottomNav.selectedItemId = R.id.scanFragment
+                        }.show()
                     }
                 }
-
-                mifare.close()
-                log("Read complete: ${blocks.length()} blocks")
-
-                // Send data to backend
-                sendMessage(JSONObject().apply {
-                    put("action", "TAG_DATA")
-                    put("uid", uidHex)
-                    put("blocks", blocks)
-                    put("request_id", pendingRequestId ?: "")
-                })
-
-                pendingAction = null
-                pendingRequestId = null
-                runOnUiThread { statusText.text = "Tag read complete" }
-
-            } catch (e: Exception) {
-                log("Read error: ${e.message}")
-                sendMessage(JSONObject().apply {
-                    put("action", "ERROR")
-                    put("message", "Read failed: ${e.message}")
-                })
-                try { mifare.close() } catch (_: Exception) {}
-            }
-        }.start()
-    }
-
-    private fun writeTag(mifare: MifareClassic, uid: ByteArray, uidHex: String) {
-        val keys = pendingKeys
-        val blocks = pendingBlocks
-
-        if (keys == null || blocks == null) {
-            log("No write data available")
-            return
-        }
-
-        Thread {
-            try {
-                mifare.connect()
-                log("Writing ${blocks.size} blocks...")
-
-                var written = 0
-                for (sector in 0 until mifare.sectorCount) {
-                    if (sector >= keys.size) break
-
-                    val authenticated = mifare.authenticateSectorWithKeyA(sector, keys[sector]) ||
-                                       mifare.authenticateSectorWithKeyB(sector, keys[sector])
-
-                    if (authenticated) {
-                        val firstBlock = mifare.sectorToBlock(sector)
-                        val blockCount = mifare.getBlockCountInSector(sector)
-                        for (i in 0 until blockCount) {
-                            val blockNum = firstBlock + i
-                            // Skip block 0 (manufacturer data) and sector trailers
-                            if (blockNum == 0) continue
-                            if ((blockNum + 1) % 4 == 0) continue  // Sector trailer
-                            if (blockNum < blocks.size) {
-                                mifare.writeBlock(blockNum, blocks[blockNum])
-                                written++
-                            }
-                        }
-                    } else {
-                        log("Auth failed for sector $sector during write")
+                is NfcManager.NfcResult.Error -> {
+                    runOnUiThread {
+                        Snackbar.make(binding.root, result.message, Snackbar.LENGTH_SHORT).show()
                     }
                 }
-
-                mifare.close()
-                log("Write complete: $written blocks written")
-
-                sendMessage(JSONObject().apply {
-                    put("action", "WRITE_RESULT")
-                    put("success", true)
-                    put("blocks_written", written)
-                    put("request_id", pendingRequestId ?: "")
-                })
-
-                pendingAction = null
-                pendingRequestId = null
-                pendingKeys = null
-                pendingBlocks = null
-                runOnUiThread { statusText.text = "Tag write complete" }
-
-            } catch (e: Exception) {
-                log("Write error: ${e.message}")
-                sendMessage(JSONObject().apply {
-                    put("action", "WRITE_RESULT")
-                    put("success", false)
-                    put("error", e.message)
-                    put("request_id", pendingRequestId ?: "")
-                })
-                try { mifare.close() } catch (_: Exception) {}
-            }
-        }.start()
-    }
-
-    // ──────────────────────────────────────────
-    // WebSocket Communication
-    // ──────────────────────────────────────────
-
-    private fun connectWebSocket(serverUrl: String) {
-        val wsUrl = if (serverUrl.startsWith("ws://") || serverUrl.startsWith("wss://")) {
-            serverUrl
-        } else {
-            "ws://$serverUrl/ws/nfc"
-        }
-
-        log("Connecting to $wsUrl...")
-        wsClient = OkHttpClient()
-        val request = Request.Builder().url(wsUrl).build()
-
-        webSocket = wsClient?.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                connected = true
-                log("Connected to server")
-                runOnUiThread { statusText.text = "Connected to BambuRFID server" }
-
-                // Send status
-                sendMessage(JSONObject().apply {
-                    put("action", "STATUS")
-                    put("connected", true)
-                    put("device", android.os.Build.MODEL)
-                })
-            }
-
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                handleServerMessage(text)
-            }
-
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                connected = false
-                log("Disconnected: $reason")
-                runOnUiThread { statusText.text = "Disconnected" }
-            }
-
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                connected = false
-                log("Connection error: ${t.message}")
-                runOnUiThread { statusText.text = "Connection failed" }
-            }
-        })
-    }
-
-    private fun handleServerMessage(text: String) {
-        try {
-            val msg = JSONObject(text)
-            val action = msg.optString("action", "")
-
-            when (action) {
-                "READ_TAG" -> {
-                    pendingAction = "READ_TAG"
-                    pendingRequestId = msg.optString("request_id", "")
-
-                    // If keys are provided, parse them
-                    if (msg.has("keys")) {
-                        val keysArray = msg.getJSONArray("keys")
-                        val keyList = mutableListOf<ByteArray>()
-                        for (i in 0 until keysArray.length()) {
-                            keyList.add(hexToBytes(keysArray.getString(i)))
-                        }
-                        pendingKeys = keyList
-                    }
-
-                    log("Server requested tag read. Tap a tag...")
-                    runOnUiThread { statusText.text = "Tap a tag to read" }
-                }
-
-                "WRITE_TAG" -> {
-                    pendingAction = "WRITE_TAG"
-                    pendingRequestId = msg.optString("request_id", "")
-
-                    // Parse keys
-                    val keysArray = msg.getJSONArray("keys")
-                    val keyList = mutableListOf<ByteArray>()
-                    for (i in 0 until keysArray.length()) {
-                        keyList.add(hexToBytes(keysArray.getString(i)))
-                    }
-                    pendingKeys = keyList
-
-                    // Parse blocks
-                    val blocksArray = msg.getJSONArray("blocks")
-                    val blockList = mutableListOf<ByteArray>()
-                    for (i in 0 until blocksArray.length()) {
-                        blockList.add(Base64.decode(blocksArray.getString(i), Base64.NO_WRAP))
-                    }
-                    pendingBlocks = blockList
-
-                    // Parse target UID for magic tags
-                    if (msg.has("uid")) {
-                        pendingTargetUid = hexToBytes(msg.getString("uid"))
-                    }
-
-                    log("Server requested tag write. Tap a blank tag...")
-                    runOnUiThread { statusText.text = "Tap a tag to write" }
-                }
-
-                "DERIVE_KEYS" -> {
-                    val uid = msg.getString("uid")
-                    log("Received keys for UID: $uid")
-                    // Keys will be used for next read/write operation
-                }
-
-                else -> log("Unknown action: $action")
-            }
-        } catch (e: Exception) {
-            log("Message parse error: ${e.message}")
-        }
-    }
-
-    private fun sendMessage(json: JSONObject) {
-        webSocket?.send(json.toString())
-    }
-
-    // ──────────────────────────────────────────
-    // Utility
-    // ──────────────────────────────────────────
-
-    private fun hexToBytes(hex: String): ByteArray {
-        val clean = hex.replace(" ", "")
-        return ByteArray(clean.length / 2) { i ->
-            clean.substring(i * 2, i * 2 + 2).toInt(16).toByte()
-        }
-    }
-
-    private fun log(message: String) {
-        Log.d(TAG, message)
-        runOnUiThread {
-            logText.append("$message\n")
-            // Auto-scroll to bottom
-            val scrollAmount = logText.layout?.let {
-                it.getLineTop(logText.lineCount) - logText.height
-            } ?: 0
-            if (scrollAmount > 0) {
-                logText.scrollTo(0, scrollAmount)
             }
         }
     }

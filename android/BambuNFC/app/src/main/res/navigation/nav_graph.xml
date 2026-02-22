@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/scanFragment">
+
+    <fragment
+        android:id="@+id/scanFragment"
+        android:name="com.bamburfid.nfc.ui.scan.ScanFragment"
+        android:label="@string/nav_scan" />
+
+    <fragment
+        android:id="@+id/writeFragment"
+        android:name="com.bamburfid.nfc.ui.write.WriteFragment"
+        android:label="@string/nav_write" />
+
+    <fragment
+        android:id="@+id/spoolsFragment"
+        android:name="com.bamburfid.nfc.ui.spools.SpoolsFragment"
+        android:label="@string/nav_spools" />
+
+    <fragment
+        android:id="@+id/libraryFragment"
+        android:name="com.bamburfid.nfc.ui.library.LibraryFragment"
+        android:label="@string/nav_library" />
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="com.bamburfid.nfc.ui.settings.SettingsFragment"
+        android:label="@string/nav_settings" />
+
+</navigation>

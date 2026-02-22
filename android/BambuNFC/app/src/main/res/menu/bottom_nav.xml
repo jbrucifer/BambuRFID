@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/scanFragment"
+        android:icon="@drawable/ic_scan"
+        android:title="@string/nav_scan" />
+    <item
+        android:id="@+id/writeFragment"
+        android:icon="@drawable/ic_write"
+        android:title="@string/nav_write" />
+    <item
+        android:id="@+id/spoolsFragment"
+        android:icon="@drawable/ic_spools"
+        android:title="@string/nav_spools" />
+    <item
+        android:id="@+id/libraryFragment"
+        android:icon="@drawable/ic_library"
+        android:title="@string/nav_library" />
+    <item
+        android:id="@+id/settingsFragment"
+        android:icon="@drawable/ic_settings"
+        android:title="@string/nav_settings" />
+</menu>

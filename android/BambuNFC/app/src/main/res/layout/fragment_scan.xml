@@ -1,0 +1,281 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_primary"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Header -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="BambuNFC"
+            android:textSize="28sp"
+            android:textColor="@color/green_400"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="4dp" />
+
+        <!-- NFC prompt area (shown when no tag scanned yet) -->
+        <LinearLayout
+            android:id="@+id/scanPromptArea"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="32dp">
+
+            <ImageView
+                android:id="@+id/nfcIcon"
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:src="@drawable/ic_nfc_large"
+                android:layout_marginBottom="16dp"
+                android:contentDescription="NFC" />
+
+            <TextView
+                android:id="@+id/scanPromptText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/scan_prompt"
+                android:textSize="18sp"
+                android:textColor="@color/text_secondary"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/scanSubText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Hold your phone near a Bambu Lab filament spool"
+                android:textSize="13sp"
+                android:textColor="@color/text_tertiary"
+                android:gravity="center"
+                android:layout_marginTop="8dp" />
+
+        </LinearLayout>
+
+        <!-- Status message (shown during read) -->
+        <TextView
+            android:id="@+id/statusMessage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textColor="@color/green_400"
+            android:gravity="center"
+            android:visibility="gone"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Error message -->
+        <TextView
+            android:id="@+id/errorMessage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textColor="@color/red_500"
+            android:gravity="center"
+            android:visibility="gone"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Filament data card (shown after successful read) -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/filamentCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:visibility="gone"
+            app:cardBackgroundColor="@color/bg_secondary"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            xmlns:app="http://schemas.android.com/apk/res-auto">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- Card header with color swatch -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="12dp">
+
+                    <View
+                        android:id="@+id/colorSwatch"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:background="@drawable/circle_swatch"
+                        android:layout_marginEnd="12dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/materialName"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="20sp"
+                            android:textColor="@color/text_primary"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/materialId"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
+
+                    <!-- RSA badge -->
+                    <TextView
+                        android:id="@+id/rsaBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="RSA"
+                        android:textSize="11sp"
+                        android:textColor="@color/green_400"
+                        android:background="@drawable/badge_outline"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="2dp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/bg_tertiary"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Data grid -->
+                <GridLayout
+                    android:id="@+id/dataGrid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:columnCount="2"
+                    android:rowCount="7"
+                    android:useDefaultMargins="true">
+
+                    <!-- Row 1: UID -->
+                    <TextView android:text="@string/label_uid" android:textColor="@color/text_tertiary" android:textSize="12sp" />
+                    <TextView android:id="@+id/valueUid" android:textColor="@color/text_primary" android:textSize="13sp" android:fontFamily="monospace" />
+
+                    <!-- Row 2: Color -->
+                    <TextView android:text="@string/label_color" android:textColor="@color/text_tertiary" android:textSize="12sp" />
+                    <TextView android:id="@+id/valueColor" android:textColor="@color/text_primary" android:textSize="13sp" android:fontFamily="monospace" />
+
+                    <!-- Row 3: Nozzle Temp -->
+                    <TextView android:text="@string/label_nozzle_temp" android:textColor="@color/text_tertiary" android:textSize="12sp" />
+                    <TextView android:id="@+id/valueNozzleTemp" android:textColor="@color/text_primary" android:textSize="13sp" />
+
+                    <!-- Row 4: Bed Temp -->
+                    <TextView android:text="@string/label_bed_temp" android:textColor="@color/text_tertiary" android:textSize="12sp" />
+                    <TextView android:id="@+id/valueBedTemp" android:textColor="@color/text_primary" android:textSize="13sp" />
+
+                    <!-- Row 5: Spool Weight -->
+                    <TextView android:text="@string/label_spool_weight" android:textColor="@color/text_tertiary" android:textSize="12sp" />
+                    <TextView android:id="@+id/valueSpoolWeight" android:textColor="@color/text_primary" android:textSize="13sp" />
+
+                    <!-- Row 6: Diameter -->
+                    <TextView android:text="@string/label_diameter" android:textColor="@color/text_tertiary" android:textSize="12sp" />
+                    <TextView android:id="@+id/valueDiameter" android:textColor="@color/text_primary" android:textSize="13sp" />
+
+                    <!-- Row 7: Filament Length -->
+                    <TextView android:text="@string/label_filament_length" android:textColor="@color/text_tertiary" android:textSize="12sp" />
+                    <TextView android:id="@+id/valueLength" android:textColor="@color/text_primary" android:textSize="13sp" />
+
+                </GridLayout>
+
+                <!-- More details (collapsed by default) -->
+                <LinearLayout
+                    android:id="@+id/moreDetails"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    android:layout_marginTop="8dp">
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="@color/bg_tertiary"
+                        android:layout_marginBottom="8dp" />
+
+                    <GridLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:columnCount="2"
+                        android:useDefaultMargins="true">
+
+                        <TextView android:text="@string/label_drying" android:textColor="@color/text_tertiary" android:textSize="12sp" />
+                        <TextView android:id="@+id/valueDrying" android:textColor="@color/text_primary" android:textSize="13sp" />
+
+                        <TextView android:text="@string/label_production_date" android:textColor="@color/text_tertiary" android:textSize="12sp" />
+                        <TextView android:id="@+id/valueProductionDate" android:textColor="@color/text_primary" android:textSize="13sp" />
+
+                        <TextView android:text="@string/label_tray_uid" android:textColor="@color/text_tertiary" android:textSize="12sp" />
+                        <TextView android:id="@+id/valueTrayUid" android:textColor="@color/text_primary" android:textSize="13sp" android:fontFamily="monospace" />
+
+                    </GridLayout>
+                </LinearLayout>
+
+                <!-- Toggle details button -->
+                <TextView
+                    android:id="@+id/toggleDetails"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Show more"
+                    android:textColor="@color/green_400"
+                    android:textSize="13sp"
+                    android:gravity="center"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="4dp" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Action buttons (shown after successful read) -->
+        <LinearLayout
+            android:id="@+id/actionButtons"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginTop="16dp"
+            android:visibility="gone">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSaveToInventory"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/action_save_to_inventory"
+                android:textSize="12sp"
+                android:layout_marginEnd="8dp"
+                style="@style/Widget.Material3.Button.TonalButton" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCloneTag"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/action_clone_tag"
+                android:textSize="12sp"
+                style="@style/Widget.Material3.Button.OutlinedButton" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>
