@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BambuRFID — Filament Spool Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+    <!-- Top Navigation -->
+    <nav class="bg-gray-800 border-b border-gray-700 px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <h1 class="text-xl font-bold text-green-400">BambuRFID</h1>
+            <span class="text-sm text-gray-400">Filament Spool Manager</span>
+        </div>
+        <div class="flex items-center space-x-4">
+            <div id="bridge-status" class="flex items-center space-x-2">
+                <span class="w-2 h-2 rounded-full bg-red-500" id="bridge-dot"></span>
+                <span class="text-sm text-gray-400" id="bridge-text">Phone disconnected</span>
+            </div>
+            <div id="mqtt-status" class="flex items-center space-x-2">
+                <span class="w-2 h-2 rounded-full bg-red-500" id="mqtt-dot"></span>
+                <span class="text-sm text-gray-400" id="mqtt-text">Printer offline</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Tab Navigation -->
+    <div class="bg-gray-800 border-b border-gray-700 px-6">
+        <div class="flex space-x-1" id="tab-bar">
+            <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+            <button class="tab-btn" data-tab="read-tag">Read Tag</button>
+            <button class="tab-btn" data-tab="write-tag">Write Tag</button>
+            <button class="tab-btn" data-tab="clone-tag">Clone Tag</button>
+            <button class="tab-btn" data-tab="spools">Spool Inventory</button>
+            <button class="tab-btn" data-tab="presets">Material Library</button>
+            <button class="tab-btn" data-tab="tag-library">Tag Library</button>
+            <button class="tab-btn" data-tab="mqtt-panel">OpenSpool</button>
+            <button class="tab-btn" data-tab="tools">Tools</button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-6 py-6">
+        <!-- Dashboard -->
+        <section id="tab-dashboard" class="tab-content">
+            <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-sm text-gray-400 uppercase mb-2">NFC Bridge</h3>
+                    <p class="text-2xl font-bold" id="dash-bridge">Disconnected</p>
+                    <p class="text-sm text-gray-400 mt-2">Connect your Android phone to read/write tags</p>
+                </div>
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-sm text-gray-400 uppercase mb-2">Spools Tracked</h3>
+                    <p class="text-2xl font-bold" id="dash-spool-count">0</p>
+                    <p class="text-sm text-gray-400 mt-2">Filament spools in inventory</p>
+                </div>
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-sm text-gray-400 uppercase mb-2">Printer</h3>
+                    <p class="text-2xl font-bold" id="dash-printer">Offline</p>
+                    <p class="text-sm text-gray-400 mt-2">MQTT / OpenSpool connection</p>
+                </div>
+            </div>
+
+            <h3 class="text-lg font-bold mb-4">Quick Actions</h3>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <button onclick="switchTab('read-tag')" class="action-btn">Read RFID Tag</button>
+                <button onclick="switchTab('write-tag')" class="action-btn">Write Custom Tag</button>
+                <button onclick="switchTab('clone-tag')" class="action-btn">Clone Tag</button>
+                <button onclick="switchTab('mqtt-panel')" class="action-btn">Push to Printer</button>
+            </div>
+
+            <h3 class="text-lg font-bold mt-8 mb-4">Recent Spools</h3>
+            <div id="recent-spools" class="space-y-2">
+                <p class="text-gray-400">No spools yet. Read a tag or add one manually.</p>
+            </div>
+        </section>
+
+        <!-- Read Tag -->
+        <section id="tab-read-tag" class="tab-content hidden">
+            <h2 class="text-2xl font-bold mb-6">Read RFID Tag</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-lg font-bold mb-4">NFC Bridge Read</h3>
+                    <p class="text-gray-400 mb-4">Hold a Bambu Lab filament spool near your Android phone's NFC reader.</p>
+                    <button onclick="readTagViaBridge()" class="btn-primary w-full" id="btn-read-nfc">
+                        Read Tag via Phone
+                    </button>
+
+                    <div class="mt-6">
+                        <h4 class="font-semibold mb-2">Or paste a tag dump:</h4>
+                        <textarea id="hex-dump-input" rows="6" class="input-field w-full font-mono text-xs"
+                            placeholder="Paste hex dump or Proxmark3 output here..."></textarea>
+                        <div class="flex space-x-2 mt-2">
+                            <button onclick="decodeHexDump()" class="btn-secondary">Decode Hex</button>
+                            <button onclick="decodeProxmarkDump()" class="btn-secondary">Decode Proxmark3</button>
+                        </div>
+                    </div>
+
+                    <div class="mt-6">
+                        <h4 class="font-semibold mb-2">Or upload a dump file:</h4>
+                        <input type="file" id="dump-file-input" accept=".bin,.dump,.mfd"
+                            class="input-field w-full" onchange="decodeFileUpload()">
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-lg font-bold mb-4">Tag Data</h3>
+                    <div id="read-result" class="space-y-3">
+                        <p class="text-gray-400">No tag data yet. Read or decode a tag.</p>
+                    </div>
+                    <div id="read-actions" class="mt-4 space-x-2 hidden">
+                        <button onclick="saveReadToInventory()" class="btn-primary">Save to Inventory</button>
+                        <button onclick="useForClone()" class="btn-secondary">Use for Cloning</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Write Tag -->
+        <section id="tab-write-tag" class="tab-content hidden">
+            <h2 class="text-2xl font-bold mb-6">Write Custom Tag</h2>
+            <div class="bg-yellow-900 border border-yellow-700 rounded-lg p-4 mb-6">
+                <p class="text-yellow-200 text-sm">
+                    <strong>Note:</strong> Custom tags without a valid RSA signature will be rejected by the Bambu Lab printer.
+                    Use the OpenSpool/MQTT feature to push filament data directly to the printer instead, or clone an existing genuine tag.
+                </p>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-lg font-bold mb-4">Filament Settings</h3>
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="label">Material Preset</label>
+                                <select id="write-preset" class="input-field w-full" onchange="applyPreset()">
+                                    <option value="">— Select preset —</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label">Material ID</label>
+                                <input type="text" id="write-material-id" class="input-field w-full" placeholder="GFA00">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="label">Filament Type</label>
+                                <input type="text" id="write-type" class="input-field w-full" placeholder="PLA">
+                            </div>
+                            <div>
+                                <label class="label">Detailed Type</label>
+                                <input type="text" id="write-detailed-type" class="input-field w-full" placeholder="PLA Basic">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4">
+                            <div>
+                                <label class="label">Color</label>
+                                <input type="color" id="write-color" class="h-10 w-full rounded cursor-pointer" value="#FFFFFF">
+                            </div>
+                            <div>
+                                <label class="label">Weight (g)</label>
+                                <input type="number" id="write-weight" class="input-field w-full" value="1000">
+                            </div>
+                            <div>
+                                <label class="label">Diameter (mm)</label>
+                                <input type="number" id="write-diameter" class="input-field w-full" value="1.75" step="0.01">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="label">Min Nozzle Temp (C)</label>
+                                <input type="number" id="write-temp-min" class="input-field w-full" value="190">
+                            </div>
+                            <div>
+                                <label class="label">Max Nozzle Temp (C)</label>
+                                <input type="number" id="write-temp-max" class="input-field w-full" value="230">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="label">Bed Temp (C)</label>
+                                <input type="number" id="write-bed-temp" class="input-field w-full" value="60">
+                            </div>
+                            <div>
+                                <label class="label">Filament Length (m)</label>
+                                <input type="number" id="write-length" class="input-field w-full" value="330">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="label">Drying Temp (C)</label>
+                                <input type="number" id="write-dry-temp" class="input-field w-full" value="55">
+                            </div>
+                            <div>
+                                <label class="label">Drying Time (h)</label>
+                                <input type="number" id="write-dry-time" class="input-field w-full" value="8">
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="encodeTag()" class="btn-primary w-full mt-6">Generate Tag Data</button>
+                </div>
+
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-lg font-bold mb-4">Generated Tag</h3>
+                    <div id="write-result" class="space-y-3">
+                        <p class="text-gray-400">Configure filament settings and click Generate.</p>
+                    </div>
+                    <div id="write-actions" class="mt-4 space-x-2 hidden">
+                        <button onclick="writeTagViaBridge()" class="btn-primary">Write to Tag via Phone</button>
+                        <button onclick="downloadTagDump()" class="btn-secondary">Download .bin</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Clone Tag -->
+        <section id="tab-clone-tag" class="tab-content hidden">
+            <h2 class="text-2xl font-bold mb-6">Clone Tag</h2>
+            <div class="bg-blue-900 border border-blue-700 rounded-lg p-4 mb-6">
+                <p class="text-blue-200 text-sm">
+                    <strong>Cloning</strong> copies all data including the RSA signature from a genuine Bambu Lab tag to a Magic/FUID MIFARE Classic tag.
+                    The destination tag must support UID changes (Gen2 or FUID tags). Standard tags have read-only UIDs and cannot be cloned to.
+                </p>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-lg font-bold mb-4">Source Tag (Original)</h3>
+                    <button onclick="readSourceTag()" class="btn-primary w-full mb-4">Read Source Tag via Phone</button>
+                    <div id="clone-source" class="space-y-2">
+                        <p class="text-gray-400">Read a genuine Bambu Lab spool tag first.</p>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-lg font-bold mb-4">Destination Tag (Clone)</h3>
+                    <div id="clone-dest-info" class="mb-4">
+                        <p class="text-gray-400">After reading the source, tap a blank Magic/FUID tag to write.</p>
+                    </div>
+                    <button onclick="writeCloneTag()" class="btn-primary w-full" id="btn-clone-write" disabled>
+                        Write Clone to Tag
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Spool Inventory -->
+        <section id="tab-spools" class="tab-content hidden">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold">Spool Inventory</h2>
+                <button onclick="showAddSpoolModal()" class="btn-primary">Add Spool</button>
+            </div>
+            <div class="mb-4">
+                <input type="text" id="spool-search" class="input-field w-full" placeholder="Search spools..."
+                    oninput="filterSpools()">
+            </div>
+            <div id="spool-list" class="space-y-2">
+                <p class="text-gray-400">No spools in inventory.</p>
+            </div>
+        </section>
+
+        <!-- Material Library -->
+        <section id="tab-presets" class="tab-content hidden">
+            <h2 class="text-2xl font-bold mb-6">Material Library</h2>
+            <div id="preset-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <p class="text-gray-400">Loading presets...</p>
+            </div>
+        </section>
+
+        <!-- Tag Library -->
+        <section id="tab-tag-library" class="tab-content hidden">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold">Tag Library</h2>
+                <div class="flex items-center space-x-3">
+                    <span class="text-sm text-gray-400" id="lib-count">Loading...</span>
+                    <button onclick="refreshLibrary()" class="btn-secondary text-xs">Refresh Index</button>
+                </div>
+            </div>
+            <div class="bg-blue-900 border border-blue-700 rounded-lg p-4 mb-6">
+                <p class="text-blue-200 text-sm">
+                    <strong>1,500+ genuine Bambu Lab tag dumps</strong> from the community
+                    <a href="https://github.com/queengooborg/Bambu-Lab-RFID-Library" target="_blank" class="underline">Bambu-Lab-RFID-Library</a>.
+                    Each dump includes the RSA signature — select one and clone it to a Magic/FUID tag for full AMS compatibility.
+                </p>
+            </div>
+
+            <!-- Filters -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div>
+                    <label class="label">Material</label>
+                    <select id="lib-material" class="input-field w-full" onchange="onLibMaterialChange()">
+                        <option value="">All Materials</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="label">Type</label>
+                    <select id="lib-subtype" class="input-field w-full" onchange="onLibSubtypeChange()">
+                        <option value="">All Types</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="label">Color</label>
+                    <select id="lib-color" class="input-field w-full" onchange="searchLibrary()">
+                        <option value="">All Colors</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="label">Search</label>
+                    <input type="text" id="lib-search" class="input-field w-full" placeholder="Search..."
+                        oninput="searchLibrary()">
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4" id="lib-results">
+                <p class="text-gray-400 col-span-3">Select a material to browse available tag dumps.</p>
+            </div>
+
+            <!-- Selected tag detail -->
+            <div id="lib-detail" class="mt-6 hidden">
+                <div class="bg-gray-800 rounded-lg p-6 border border-green-700">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-green-400" id="lib-detail-title">Tag Details</h3>
+                        <div class="flex space-x-2">
+                            <button onclick="cloneFromLibrary()" class="btn-primary">Clone to Tag</button>
+                            <button onclick="saveLibraryToInventory()" class="btn-secondary">Save to Inventory</button>
+                            <button onclick="downloadLibraryDump()" class="btn-secondary">Download .bin</button>
+                        </div>
+                    </div>
+                    <div id="lib-detail-data" class="space-y-2"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- OpenSpool MQTT -->
+        <section id="tab-mqtt-panel" class="tab-content hidden">
+            <h2 class="text-2xl font-bold mb-6">OpenSpool — Direct Printer Communication</h2>
+            <div class="bg-green-900 border border-green-700 rounded-lg p-4 mb-6">
+                <p class="text-green-200 text-sm">
+                    <strong>Bypass RFID:</strong> Send filament data directly to your printer via MQTT.
+                    No RFID tags needed. Requires LAN Mode + Developer Mode enabled on the printer.
+                </p>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-lg font-bold mb-4">Printer Connection</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="label">Printer IP Address</label>
+                            <input type="text" id="mqtt-ip" class="input-field w-full" placeholder="192.168.1.100">
+                        </div>
+                        <div>
+                            <label class="label">Serial Number</label>
+                            <input type="text" id="mqtt-serial" class="input-field w-full" placeholder="01P00A000000000">
+                        </div>
+                        <div>
+                            <label class="label">LAN Access Code</label>
+                            <input type="password" id="mqtt-access" class="input-field w-full" placeholder="12345678">
+                        </div>
+                        <div class="flex space-x-2">
+                            <button onclick="connectMQTT()" class="btn-primary flex-1">Connect</button>
+                            <button onclick="disconnectMQTT()" class="btn-secondary flex-1">Disconnect</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-lg font-bold mb-4">Push Filament to AMS Slot</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="label">AMS Slot</label>
+                            <select id="mqtt-slot" class="input-field w-full">
+                                <option value="0">Slot 1</option>
+                                <option value="1">Slot 2</option>
+                                <option value="2">Slot 3</option>
+                                <option value="3">Slot 4</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="label">Select from Inventory</label>
+                            <select id="mqtt-spool-select" class="input-field w-full">
+                                <option value="">— Select a spool —</option>
+                            </select>
+                        </div>
+                        <button onclick="pushToSlot()" class="btn-primary w-full">Push to Printer</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tools -->
+        <section id="tab-tools" class="tab-content hidden">
+            <h2 class="text-2xl font-bold mb-6">Tools</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-lg font-bold mb-4">Key Derivation</h3>
+                    <p class="text-gray-400 mb-4">Derive MIFARE sector keys from a tag UID.</p>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="label">Tag UID (hex)</label>
+                            <input type="text" id="kdf-uid" class="input-field w-full" placeholder="7AD43F1C">
+                        </div>
+                        <button onclick="deriveKeys()" class="btn-primary w-full">Derive Keys</button>
+                    </div>
+                    <div id="kdf-result" class="mt-4 hidden">
+                        <h4 class="font-semibold mb-2">Derived Keys:</h4>
+                        <pre id="kdf-keys" class="bg-gray-900 rounded p-3 font-mono text-xs overflow-x-auto"></pre>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                    <h3 class="text-lg font-bold mb-4">NFC Bridge Setup</h3>
+                    <p class="text-gray-400 mb-4">Connect your Android phone to use it as an NFC reader/writer.</p>
+                    <ol class="text-sm text-gray-300 space-y-2 list-decimal list-inside">
+                        <li>Install the BambuNFC companion app on your Android phone</li>
+                        <li>Open the app and enter this server's IP address</li>
+                        <li>The connection status will show in the top bar</li>
+                        <li>When prompted, hold a filament spool near your phone's NFC area</li>
+                    </ol>
+                    <div class="mt-4 p-3 bg-gray-900 rounded">
+                        <p class="text-sm text-gray-400">Server WebSocket URL:</p>
+                        <code class="text-green-400" id="ws-url">ws://loading.../ws/nfc</code>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Add Spool Modal -->
+    <div id="spool-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeSpoolModal()"></div>
+        <div class="modal-content">
+            <h3 class="text-xl font-bold mb-4">Add Spool</h3>
+            <div class="space-y-4 max-h-96 overflow-y-auto">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="label">Name</label>
+                        <input type="text" id="modal-name" class="input-field w-full" placeholder="My PLA White">
+                    </div>
+                    <div>
+                        <label class="label">Brand</label>
+                        <input type="text" id="modal-brand" class="input-field w-full" placeholder="Bambu Lab">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="label">Material</label>
+                        <input type="text" id="modal-material" class="input-field w-full" placeholder="PLA Basic">
+                    </div>
+                    <div>
+                        <label class="label">Color</label>
+                        <input type="color" id="modal-color" class="h-10 w-full rounded cursor-pointer" value="#FFFFFF">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="label">Weight (g)</label>
+                        <input type="number" id="modal-weight" class="input-field w-full" value="1000">
+                    </div>
+                    <div>
+                        <label class="label">Remaining (g)</label>
+                        <input type="number" id="modal-remaining" class="input-field w-full" value="1000">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="label">Min Nozzle Temp (C)</label>
+                        <input type="number" id="modal-temp-min" class="input-field w-full" value="190">
+                    </div>
+                    <div>
+                        <label class="label">Max Nozzle Temp (C)</label>
+                        <input type="number" id="modal-temp-max" class="input-field w-full" value="230">
+                    </div>
+                </div>
+                <div>
+                    <label class="label">Notes</label>
+                    <textarea id="modal-notes" class="input-field w-full" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="flex space-x-2 mt-6">
+                <button onclick="saveSpool()" class="btn-primary flex-1">Save</button>
+                <button onclick="closeSpoolModal()" class="btn-secondary flex-1">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="/static/utils/ws-client.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>

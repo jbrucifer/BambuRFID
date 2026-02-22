@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+*.db
+
+# Backend
+backend/library_cache/
+backend/spools.db
+
+# Android
+android/BambuNFC/.gradle/
+android/BambuNFC/app/build/
+android/BambuNFC/build/
+android/BambuNFC/local.properties
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+*.env
