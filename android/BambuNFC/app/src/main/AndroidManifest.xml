@@ -9,6 +9,8 @@
     <application
         android:allowBackup="true"
         android:label="BambuNFC"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
 
         <activity
